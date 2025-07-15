@@ -23,20 +23,29 @@ export const StageTransitionConfig = ({
   availableFeatures,
   onSave
 }: StageTransitionConfigProps) => {
-  const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>(
-    transition?.features || []
-  );
-  const [steps, setSteps] = useState<Step[]>(
-    transition?.stageConfig?.steps || [
+  // Initialize with empty state for each new transition, ensuring no dependencies
+  const [selectedFeatures, setSelectedFeatures] = useState<Feature[]>(() => {
+    // Only use existing features if this specific transition has been configured before
+    return transition?.stageConfig?.isConfigured ? (transition.features || []) : [];
+  });
+  
+  const [steps, setSteps] = useState<Step[]>(() => {
+    // Only use existing steps if this specific transition has been configured before
+    if (transition?.stageConfig?.isConfigured && transition.stageConfig.steps?.length > 0) {
+      return transition.stageConfig.steps;
+    }
+    // Otherwise start with one empty step
+    return [
       { 
         id: 'step-1', 
         name: 'Step 1', 
         order: 1, 
-        features: [],
+        features: [], // Always start empty
         executionType: 'required'
       }
-    ]
-  );
+    ];
+  });
+  
   const [expandedSteps, setExpandedSteps] = useState<string[]>(['step-1']);
   const [draggedFeature, setDraggedFeature] = useState<Feature | null>(null);
   const [dragOverZone, setDragOverZone] = useState<string | null>(null);
@@ -245,7 +254,7 @@ export const StageTransitionConfig = ({
       id: `step-${newStepNumber}`,
       name: `Step ${newStepNumber}`,
       order: newStepNumber,
-      features: [],
+      features: [], // Always start empty
       executionType: 'required'
     };
     setSteps([...steps, newStep]);
@@ -271,11 +280,11 @@ export const StageTransitionConfig = ({
     setSteps(prevSteps =>
       prevSteps.map(step => {
         if (step.id === stepId) {
-          // Clear all features when changing execution type
+          // Clear all features when changing execution type to ensure clean state
           return {
             ...step,
             executionType,
-            features: [],
+            features: [], // Always clear features when changing execution type
           };
         }
         return step;
@@ -304,11 +313,32 @@ export const StageTransitionConfig = ({
           id: transition.id,
           name: `${transition.fromStage} → ${transition.toStage}`,
           steps: steps,
-          isConfigured: true
+          isConfigured: true // Mark as configured only when user saves
         }
       });
     }
     onClose();
+  };
+
+  // Reset state when dialog opens with a new transition
+  const handleDialogChange = (open: boolean) => {
+    if (open && transition) {
+      // Reset to empty state for new transitions or preserve existing for configured ones
+      const isConfigured = transition.stageConfig?.isConfigured || false;
+      
+      setSelectedFeatures(isConfigured ? (transition.features || []) : []);
+      setSteps(isConfigured && transition.stageConfig?.steps?.length > 0 
+        ? transition.stageConfig.steps 
+        : [{ 
+            id: 'step-1', 
+            name: 'Step 1', 
+            order: 1, 
+            features: [], 
+            executionType: 'required'
+          }]
+      );
+      setExpandedSteps(['step-1']);
+    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -398,7 +428,10 @@ export const StageTransitionConfig = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      handleDialogChange(open);
+      if (!open) onClose();
+    }}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
