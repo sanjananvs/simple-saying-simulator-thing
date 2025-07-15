@@ -56,6 +56,16 @@ export const StepManager = ({
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed": return "bg-green-100 text-green-800 border-green-200";
+      case "in-progress": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "error": return "bg-red-100 text-red-800 border-red-200";
+      case "not-started": return "bg-gray-100 text-gray-800 border-gray-200";
+      default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high": return "bg-red-100 text-red-800 border-red-200";
@@ -176,12 +186,23 @@ export const StepManager = ({
                   </Badge>
                   <span className="text-sm">{feature.icon}</span>
                   <span className="text-sm font-medium flex-1">{feature.name}</span>
-                  <Badge
-                    variant="outline"
-                    className={`text-xs px-2 py-0 ${getPriorityColor(feature.priority)}`}
-                  >
-                    {feature.priority}
-                  </Badge>
+                  
+                  {/* Status and Priority Badges - Always Visible */}
+                  <div className="flex items-center space-x-1">
+                    <Badge
+                      variant="outline"
+                      className={`text-xs px-2 py-0 ${getStatusColor(feature.status || 'not-started')}`}
+                    >
+                      {(feature.status || 'not-started').replace('-', ' ')}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs px-2 py-0 ${getPriorityColor(feature.priority)}`}
+                    >
+                      {feature.priority}
+                    </Badge>
+                  </div>
+                  
                   <Button
                     variant="ghost"
                     size="sm"

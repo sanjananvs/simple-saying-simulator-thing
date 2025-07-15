@@ -1,8 +1,7 @@
 
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical, Check, Plus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Feature } from "@/types/features";
 
 interface FeatureSelectorProps {
@@ -20,6 +19,16 @@ export const FeatureSelector = ({
   onDragStart,
   onDragEnd
 }: FeatureSelectorProps) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed": return "bg-green-100 text-green-800 border-green-200";
+      case "in-progress": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "error": return "bg-red-100 text-red-800 border-red-200";
+      case "not-started": return "bg-gray-100 text-gray-800 border-gray-200";
+      default: return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high": return "bg-red-100 text-red-800 border-red-200";
@@ -30,53 +39,59 @@ export const FeatureSelector = ({
   };
 
   return (
-    <div className="w-80">
-      <h3 className="font-medium text-gray-800 mb-3">Available Features</h3>
-      <ScrollArea className="h-[600px]">
-        <div className="space-y-2 pr-4">
+    <div className="w-1/3 border-r border-gray-200 pr-4">
+      <h3 className="font-medium text-gray-800 mb-4">Feature Library</h3>
+      <ScrollArea className="h-[560px]">
+        <div className="space-y-2">
           {availableFeatures.map((feature) => {
             const isSelected = selectedFeatures.some(f => f.id === feature.id);
+            
             return (
-              <Card
+              <div
                 key={feature.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                className={`p-3 border rounded-lg cursor-move hover:shadow-sm transition-all ${
+                  isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'
                 }`}
                 draggable
                 onDragStart={(e) => onDragStart(e, feature)}
                 onDragEnd={onDragEnd}
-                onClick={() => onFeatureToggle(feature)}
-                title="Click to select/deselect or drag to specific step"
               >
-                <CardContent className="p-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
-                        <span className="text-lg">{feature.icon}</span>
-                        <h4 className="font-medium text-sm">{feature.name}</h4>
-                        {isSelected ? (
-                          <Check className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <Plus className="h-4 w-4 text-gray-400" />
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-600 mt-1 ml-6">{feature.description}</p>
-                      <div className="flex items-center space-x-2 mt-2 ml-6">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs px-2 py-0 ${getPriorityColor(feature.priority)}`}
-                        >
-                          {feature.priority}
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          ~{feature.estimatedTime}s
-                        </span>
-                      </div>
+                <div className="flex items-start space-x-3">
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => onFeatureToggle(feature)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="text-lg">{feature.icon}</span>
+                      <span className="font-medium text-sm truncate">{feature.name}</span>
+                    </div>
+                    
+                    <p className="text-xs text-gray-600 mb-3 line-clamp-2">
+                      {feature.description}
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-1">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs px-2 py-0 ${getStatusColor(feature.status || 'not-started')}`}
+                      >
+                        {(feature.status || 'not-started').replace('-', ' ')}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs px-2 py-0 ${getPriorityColor(feature.priority)}`}
+                      >
+                        {feature.priority}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs px-2 py-0 bg-blue-100 text-blue-800 border-blue-200">
+                        {feature.category}
+                      </Badge>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>

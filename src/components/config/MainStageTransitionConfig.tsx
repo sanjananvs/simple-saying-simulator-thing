@@ -32,22 +32,20 @@ export const MainStageTransitionConfig = ({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Initialize state when dialog opens
+  // Initialize state when dialog opens - always start fresh for each transition
   useEffect(() => {
     if (isOpen && transition) {
-      const isConfigured = transition.stageConfig?.isConfigured || false;
+      console.log('Initializing config for transition:', transition.fromStage, '→', transition.toStage);
       
-      setSelectedFeatures(isConfigured ? (transition.features || []) : []);
-      setSteps(isConfigured && transition.stageConfig?.steps?.length > 0 
-        ? transition.stageConfig.steps 
-        : [{ 
-            id: 'step-1', 
-            name: 'Step 1', 
-            order: 1, 
-            features: [], 
-            executionType: 'required'
-          }]
-      );
+      // Always start with empty configuration for independence
+      setSelectedFeatures([]);
+      setSteps([{ 
+        id: 'step-1', 
+        name: 'Step 1', 
+        order: 1, 
+        features: [], 
+        executionType: 'required'
+      }]);
       setExpandedSteps(['step-1']);
       setHasUnsavedChanges(false);
     }
@@ -55,26 +53,8 @@ export const MainStageTransitionConfig = ({
 
   // Track changes
   useEffect(() => {
-    if (transition) {
-      const isConfigured = transition.stageConfig?.isConfigured || false;
-      const originalFeatures = isConfigured ? (transition.features || []) : [];
-      const originalSteps = isConfigured && transition.stageConfig?.steps?.length > 0 
-        ? transition.stageConfig.steps 
-        : [];
-
-      const featuresChanged = selectedFeatures.length !== originalFeatures.length ||
-        selectedFeatures.some(f => !originalFeatures.find(of => of.id === f.id));
-      
-      const stepsChanged = steps.length !== originalSteps.length ||
-        steps.some(s => {
-          const originalStep = originalSteps.find(os => os.id === s.id);
-          return !originalStep || 
-            s.executionType !== originalStep.executionType ||
-            s.features.length !== originalStep.features.length ||
-            s.features.some(f => !originalStep.features.includes(f));
-        });
-
-      setHasUnsavedChanges(featuresChanged || stepsChanged);
+    if (transition && selectedFeatures.length > 0) {
+      setHasUnsavedChanges(true);
     }
   }, [selectedFeatures, steps, transition]);
 
@@ -91,9 +71,14 @@ export const MainStageTransitionConfig = ({
         }))
       );
     } else {
-      setSelectedFeatures([...selectedFeatures, feature]);
+      // Preserve the original feature with all its properties including status
+      const featureWithStatus = { 
+        ...feature,
+        status: feature.status || 'not-started' // Ensure status is preserved
+      };
+      setSelectedFeatures([...selectedFeatures, featureWithStatus]);
       // Auto-add to first available step
-      autoAddFeatureToStep(feature);
+      autoAddFeatureToStep(featureWithStatus);
     }
   };
 
@@ -157,7 +142,7 @@ export const MainStageTransitionConfig = ({
     const x = e.clientX;
     const y = e.clientY;
     
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    if (x < rect.left || x > rect.right || y < rect.top || y < rect.bottom) {
       setDragOverZone(null);
     }
   };
@@ -179,9 +164,13 @@ export const MainStageTransitionConfig = ({
     }
     
     if (feature && canAddToStep(stepId)) {
-      // Add to selected features if not already selected
+      // Add to selected features if not already selected, preserving status
       if (!selectedFeatures.some(f => f.id === feature.id)) {
-        setSelectedFeatures(prev => [...prev, feature!]);
+        const featureWithStatus = { 
+          ...feature,
+          status: feature.status || 'not-started'
+        };
+        setSelectedFeatures(prev => [...prev, featureWithStatus]);
       }
       
       // Remove feature from all steps first, then add to target step
@@ -294,9 +283,15 @@ export const MainStageTransitionConfig = ({
 
   const handleSaveConfiguration = () => {
     if (transition) {
+      // Preserve feature statuses when saving
+      const featuresWithStatus = selectedFeatures.map(feature => ({
+        ...feature,
+        status: feature.status || 'not-started'
+      }));
+
       onSave({
         ...transition,
-        features: selectedFeatures,
+        features: featuresWithStatus,
         stageConfig: {
           id: transition.id,
           name: `${transition.fromStage} → ${transition.toStage}`,
@@ -307,7 +302,7 @@ export const MainStageTransitionConfig = ({
       setHasUnsavedChanges(false);
       toast({
         title: "Configuration Saved",
-        description: `Settings for ${transition.fromStage} → ${transition.toStage} have been saved successfully.`,
+        description: `Settings for ${transition.fromStage} → ${transition.toStage} have been saved successfully. Feature statuses will be preserved.`,
       });
     }
     onClose();
