@@ -142,25 +142,27 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
     return { isValid: true, message: "" };
   };
 
-  // Check if all stages are completed for a partner
-  const isPartnerCompleted = (partnerName: string) => {
+  // Check if a specific stage transition is completed for a partner
+  const isStageTransitionCompleted = (partnerName: string, transitionId: string) => {
     const partnerConfig = partnerConfigs[partnerName];
     if (!partnerConfig) return false;
 
+    const transition = partnerConfig.transitions.find(t => t.id === transitionId);
+    if (!transition?.stageConfig?.isConfigured || transition.stageConfig.steps.length === 0) {
+      return false;
+    }
+
+    const allFeatures = transition.stageConfig.steps.flatMap(step => 
+      step.features.map(featureId => partnerConfig.selectedFeatures.find(f => f.id === featureId)).filter(Boolean)
+    ) as Feature[];
+
+    return allFeatures.length > 0 && allFeatures.every(f => f.status === 'completed');
+  };
+
+  // Check if all stages are completed for a partner
+  const isPartnerCompleted = (partnerName: string) => {
     const requiredTransitions = ["file-stage0", "stage0-stage1", "stage1-stage2", "stage2-target"];
-    
-    return requiredTransitions.every(transitionId => {
-      const transition = partnerConfig.transitions.find(t => t.id === transitionId);
-      if (!transition?.stageConfig?.isConfigured || transition.stageConfig.steps.length === 0) {
-        return false;
-      }
-
-      const allFeatures = transition.stageConfig.steps.flatMap(step => 
-        step.features.map(featureId => partnerConfig.selectedFeatures.find(f => f.id === featureId)).filter(Boolean)
-      ) as Feature[];
-
-      return allFeatures.length > 0 && allFeatures.every(f => f.status === 'completed');
-    });
+    return requiredTransitions.every(transitionId => isStageTransitionCompleted(partnerName, transitionId));
   };
 
   // Handle partner-specific run
@@ -190,7 +192,7 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
     console.log(`Starting pipeline for partner: ${partnerName}`);
   };
 
-  // Sequential execution with proper stage ordering
+  // Enhanced execution with immediate stage progression
   useEffect(() => {
     if (runningPartners.size === 0) return;
 
@@ -213,27 +215,13 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
             "stage2-target"
           ];
           
-          // Check if previous stage is completed before starting next
-          const isStageCompleted = (transitionId: string) => {
-            const transition = partnerConfig.transitions.find(t => t.id === transitionId);
-            if (!transition?.stageConfig?.isConfigured || transition.stageConfig.steps.length === 0) {
-              return false;
-            }
-
-            const allFeatures = transition.stageConfig.steps.flatMap(step => 
-              step.features.map(featureId => updatedFeatures.find(f => f.id === featureId)).filter(Boolean)
-            ) as Feature[];
-
-            return allFeatures.length > 0 && allFeatures.every(f => f.status === 'completed');
-          };
-
-          // Process transitions in order
+          // Process each stage and immediately start next if current is completed
           for (let i = 0; i < executionOrder.length; i++) {
             const currentTransitionId = executionOrder[i];
             const previousTransitionId = i > 0 ? executionOrder[i - 1] : null;
             
             // Check if previous stage is completed (or if this is the first stage)
-            const canStartCurrentStage = !previousTransitionId || isStageCompleted(previousTransitionId);
+            const canStartCurrentStage = !previousTransitionId || isStageTransitionCompleted(partnerName, previousTransitionId);
             
             if (!canStartCurrentStage) {
               continue; // Skip this stage and all subsequent stages
@@ -243,70 +231,76 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
             if (transition?.stageConfig?.isConfigured && transition.stageConfig.steps.length > 0) {
               const steps = transition.stageConfig.steps.sort((a, b) => a.order - b.order);
               
-              // Check each step in order
-              for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
-                const currentStep = steps[stepIndex];
-                const previousStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
-                
-                // Get features for current step
-                const currentStepFeatures = currentStep.features.map(featureId => 
-                  updatedFeatures.find(f => f.id === featureId)
-                ).filter(Boolean) as Feature[];
-                
-                // Check if previous step is completed (if exists)
-                const canStartCurrentStep = !previousStep || 
-                  previousStep.features.every(featureId => {
-                    const prevFeature = updatedFeatures.find(f => f.id === featureId);
-                    return prevFeature?.status === 'completed';
-                  });
-                
-                if (canStartCurrentStep) {
-                  // Process current step features
-                  currentStepFeatures.forEach((feature, featureIndex) => {
-                    const featureInArray = updatedFeatures.find(f => f.id === feature.id);
-                    if (!featureInArray) return;
-                    
-                    if (currentStep.executionType === 'parallel') {
-                      // Parallel execution - all features can start together
-                      if (featureInArray.status === 'not-started') {
-                        if (Math.random() > 0.7) {
+              // Check if current stage is completed
+              const currentStageCompleted = isStageTransitionCompleted(partnerName, currentTransitionId);
+              
+              if (!currentStageCompleted) {
+                // Process current stage steps
+                for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
+                  const currentStep = steps[stepIndex];
+                  const previousStep = stepIndex > 0 ? steps[stepIndex - 1] : null;
+                  
+                  // Get features for current step
+                  const currentStepFeatures = currentStep.features.map(featureId => 
+                    updatedFeatures.find(f => f.id === featureId)
+                  ).filter(Boolean) as Feature[];
+                  
+                  // Check if previous step is completed (if exists)
+                  const canStartCurrentStep = !previousStep || 
+                    previousStep.features.every(featureId => {
+                      const prevFeature = updatedFeatures.find(f => f.id === featureId);
+                      return prevFeature?.status === 'completed';
+                    });
+                  
+                  if (canStartCurrentStep && currentStepFeatures.length > 0) {
+                    // Process current step features
+                    currentStepFeatures.forEach((feature, featureIndex) => {
+                      const featureInArray = updatedFeatures.find(f => f.id === feature.id);
+                      if (!featureInArray) return;
+                      
+                      if (currentStep.executionType === 'parallel') {
+                        // Parallel execution - all features can start together
+                        if (featureInArray.status === 'not-started') {
                           const index = updatedFeatures.findIndex(f => f.id === feature.id);
                           updatedFeatures[index] = { ...featureInArray, status: 'in-progress', startTime: new Date() };
-                        }
-                      } else if (featureInArray.status === 'in-progress') {
-                        if (featureInArray.startTime) {
-                          const elapsed = (new Date().getTime() - featureInArray.startTime.getTime()) / 1000;
-                          if (elapsed >= 15) {
-                            const index = updatedFeatures.findIndex(f => f.id === feature.id);
-                            updatedFeatures[index] = { ...featureInArray, status: 'completed', completedTime: new Date() };
-                          }
-                        }
-                      }
-                    } else {
-                      // Sequential execution within step (required)
-                      const previousFeatureInStep = featureIndex > 0 ? currentStepFeatures[featureIndex - 1] : null;
-                      const canStartFeature = !previousFeatureInStep || 
-                        updatedFeatures.find(f => f.id === previousFeatureInStep.id)?.status === 'completed';
-                      
-                      if (canStartFeature) {
-                        if (featureInArray.status === 'not-started') {
-                          if (Math.random() > 0.7) {
-                            const index = updatedFeatures.findIndex(f => f.id === feature.id);
-                            updatedFeatures[index] = { ...featureInArray, status: 'in-progress', startTime: new Date() };
-                          }
                         } else if (featureInArray.status === 'in-progress') {
                           if (featureInArray.startTime) {
                             const elapsed = (new Date().getTime() - featureInArray.startTime.getTime()) / 1000;
-                            if (elapsed >= 15) {
+                            if (elapsed >= 5) { // Reduced time for faster execution
                               const index = updatedFeatures.findIndex(f => f.id === feature.id);
                               updatedFeatures[index] = { ...featureInArray, status: 'completed', completedTime: new Date() };
                             }
                           }
                         }
+                      } else {
+                        // Sequential execution within step (required)
+                        const previousFeatureInStep = featureIndex > 0 ? currentStepFeatures[featureIndex - 1] : null;
+                        const canStartFeature = !previousFeatureInStep || 
+                          updatedFeatures.find(f => f.id === previousFeatureInStep.id)?.status === 'completed';
+                        
+                        if (canStartFeature) {
+                          if (featureInArray.status === 'not-started') {
+                            const index = updatedFeatures.findIndex(f => f.id === feature.id);
+                            updatedFeatures[index] = { ...featureInArray, status: 'in-progress', startTime: new Date() };
+                          } else if (featureInArray.status === 'in-progress') {
+                            if (featureInArray.startTime) {
+                              const elapsed = (new Date().getTime() - featureInArray.startTime.getTime()) / 1000;
+                              if (elapsed >= 5) { // Reduced time for faster execution
+                                const index = updatedFeatures.findIndex(f => f.id === feature.id);
+                                updatedFeatures[index] = { ...featureInArray, status: 'completed', completedTime: new Date() };
+                              }
+                            }
+                          }
+                        }
                       }
-                    }
-                  });
+                    });
+                    break; // Only process one step at a time
+                  }
                 }
+                break; // Only process one stage at a time
+              } else {
+                // Current stage is completed, continue to next stage immediately
+                console.log(`Stage ${currentTransitionId} completed for ${partnerName}, moving to next stage`);
               }
             }
           }
@@ -314,6 +308,7 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
           // Check if partner is completed and should stop running
           if (isPartnerCompleted(partnerName)) {
             partnersToStop.add(partnerName);
+            console.log(`Pipeline completed for partner: ${partnerName}`);
           }
 
           updatedConfigs[partnerName] = {
@@ -336,7 +331,7 @@ export const LinearPipelineWithFeatures = ({ data, onRemovePartner, onEditPartne
 
         return updatedConfigs;
       });
-    }, 3000);
+    }, 1000); // Reduced interval for faster execution
 
     return () => clearInterval(interval);
   }, [partnerConfigs, runningPartners]);
